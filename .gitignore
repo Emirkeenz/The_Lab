@@ -1,0 +1,28 @@
+# Виртуальное окружение
+venv/
+.env
+*.env
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Логи и прочее
+*.log
+
+# VSCode и PyCharm
+.vscode/
+.idea/
+
+# Файлы уроков (если они генерируются)
+uploaded_lessons/
