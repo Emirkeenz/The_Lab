@@ -31,7 +31,7 @@ def main():
     # Команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("upload_lesson", upload_lesson))
-    app.add_handler(CommandHandler("startlesson", start_lesson))
+    app.add_handler(CommandHandler("start_lesson", start_lesson))
 
     app.add_handler(MessageHandler(filters.Document.PDF | filters.Document.DOCX, upload_lesson))
 

@@ -1,6 +1,19 @@
 import os
 import docx2txt
 import fitz  # PyMuPDF
+import json
+
+CHUNKS_DIR = "lesson_chunks"
+os.makedirs(CHUNKS_DIR, exist_ok=True)
+
+def save_chunks_to_json(chunks: list[str], subject: str, lesson_name: str):
+    safe_name = "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in lesson_name)
+    subject_dir = os.path.join(CHUNKS_DIR, subject)
+    os.makedirs(subject_dir, exist_ok=True)
+    file_path = os.path.join(subject_dir, f"{safe_name}.json")
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(chunks, f, ensure_ascii=False, indent=2)
 
 def extract_text_from_file(file_path: str) -> str:
     ext = os.path.splitext(file_path)[1].lower()
