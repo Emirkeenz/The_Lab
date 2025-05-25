@@ -1,105 +1,68 @@
+import os
+import json
 from telegram import Update
 from telegram.ext import ContextTypes
-import json
-import os
+from utils.parser import load_or_build_index
+from utils.ollama_client import summarize_text, query_ollama
+from llama_index.core.settings import Settings
 
-# === Начало урока (по команде «начать урок» или сообщению) ===
+CHUNKS_DIR = "lesson_chunks"
+
+# === Команда /start_lesson <имя> ===
 async def start_lesson(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data = context.user_data
-
-    if not context.args:
-        await update.message.reply_text("❗ Укажи название урока: /start_lesson <название>")
+    args = context.args
+    if not args:
+        available = list_available_lessons()
+        msg = "⚠️ Укажи название урока: /start_lesson <название>\n\nДоступные уроки:\n" + "\n".join(available)
+        await update.message.reply_text(msg)
         return
 
-    lesson_name = context.args[0]
+    lesson_name = args[0].split('.')[0]  # убираем расширение
     safe_name = "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in lesson_name)
-    file_path = f"lesson_chunks/math/{safe_name}.json"
+    file_path = f"{CHUNKS_DIR}/math/{safe_name}.json"
 
     if not os.path.exists(file_path):
-        await update.message.reply_text(
-            f"⚠️ Урок «{lesson_name}» не найден. Убедись, что он загружен."
-        )
+        await update.message.reply_text(f"⚠️ Урок «{lesson_name}» не найден. Загрузите его через /upload_lesson.")
         return
 
     with open(file_path, "r", encoding="utf-8") as f:
         chunks = json.load(f)
-        chunks = [chunk.strip() for chunk in chunks if chunk.strip()]
-        user_data["lesson_chunks"] = chunks
-        user_data["lesson_index"] = 0
 
-    await send_current_chunk(update, context)
+    context.user_data.update({
+        "lesson_name": safe_name,
+        "lesson_chunks": chunks,
+        "lesson_index": 0,
+        "lesson_index_obj": load_or_build_index(chunks, "math", lesson_name),
+    })
 
+    # 🔍 Саммари
+    summary = summarize_text("\n".join(chunks[:5]))  # первые 5 кусков — обычно ввод
+    await update.message.reply_text(f"📘 Саммари урока «{lesson_name}»:\n\n{summary}\n\nГотов задать вопрос или пиши «всё понятно» для завершения.")
 
-# === Отправка текущей части урока ===
-async def send_current_chunk(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_data = context.user_data
-
-    if "lesson_chunks" not in user_data or "lesson_index" not in user_data:
-        await update.message.reply_text("⚠️ Урок не загружен.")
-        return
-
-    chunks = user_data["lesson_chunks"]
-    index = user_data["lesson_index"]
-
-    if index >= len(chunks):
-        await update.message.reply_text("✅ Урок завершён!")
-        return
-
-    current_text = chunks[index].strip()
-
-    if not current_text:
-        await update.message.reply_text("⚠️ Текущий фрагмент урока пустой.")
-        return
-
-    # 🚨 Разбиваем длинный текст
-    MAX_LENGTH = 4096
-    for i in range(0, len(current_text), MAX_LENGTH):
-        await update.message.reply_text(current_text[i:i + MAX_LENGTH])
-
-
-# === Обработка сообщений ученика во время урока ===
+# === Обработка сообщений ученика ===
 async def handle_lesson_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data = context.user_data
     text = update.message.text.lower()
+    user_data = context.user_data
 
-    if "lesson_chunks" not in user_data:
-        await update.message.reply_text(
-            "⚠️ Урок не загружен. Попроси репетитора сначала загрузить материал."
-        )
+    if "lesson_chunks" not in user_data or "lesson_index_obj" not in user_data:
+        await update.message.reply_text("⚠️ Урок не загружен. Напиши /start_lesson <имя_урока>")
         return
 
-    idx = user_data.get("lesson_index", 0)
-    chunks = user_data.get("lesson_chunks", [])
-
-    if idx >= len(chunks):
-        # Урок уже закончен
-        if "вопрос" in text:
-            await update.message.reply_text("Задай свой вопрос, я постараюсь помочь!")
-        else:
-            await update.message.reply_text("Урок уже завершён. Чтобы начать новый, попроси загрузить материал.")
+    if "всё понятно" in text:
+        await update.message.reply_text("🎉 Отлично! Урок завершён. Если хочешь продолжить — выбери другой файл.")
+        context.user_data.clear()
         return
 
-    if "объясни проще" in text:
-        # Логика упрощения — здесь можно запросить AI с подсказкой "объясни проще"
-        simplified_text = await get_simplified_text(chunks[idx])
-        await update.message.reply_text(simplified_text)
+    Settings.llm = None
 
-    elif "следующий" in text:
-        user_data["lesson_index"] = idx + 1
-        await send_current_chunk(update, context)
+    index = user_data["lesson_index_obj"]
+    query_engine = index.as_query_engine()
+    response = query_engine.query(text)
+    await update.message.reply_text(f"🤖 Ответ:\n{response}")
 
-    else:
-        # Любой другой ответ — можно проверить, закрепить материал, задать вопрос и т.п.
-        await update.message.reply_text(
-            "Если хочешь объяснений — напиши «объясни проще», "
-            "если готов продолжать — «следующий»."
-        )
-
-
-# === Функция для запроса упрощённого текста у AI ===
-async def get_simplified_text(text: str) -> str:
-    # Тут будет вызов Ollama через utils/ollama_client.py (позже сделаем)
-    prompt = f"Объясни проще этот текст:\n\n{text}"
-    # Заглушка пока:
-    return f"Упрощённая версия:\n{prompt}"
+# === Показать список доступных уроков ===
+def list_available_lessons():
+    folder = os.path.join(CHUNKS_DIR, "math")
+    if not os.path.exists(folder):
+        return []
+    return [f.replace(".json", "") for f in os.listdir(folder) if f.endswith(".json")]

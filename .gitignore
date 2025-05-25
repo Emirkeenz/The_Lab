@@ -26,3 +26,5 @@ build/
 
 # Файлы уроков (если они генерируются)
 uploaded_lessons/
+lesson_chunks/
+rag_indexes/
