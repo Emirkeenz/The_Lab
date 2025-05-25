@@ -1,47 +1,40 @@
-import logging
+from telegram.ext import Application, CommandHandler, MessageHandler
+from telegram import BotCommand
+from handlers.messages import start_lesson, handle_lesson_message
+from handlers.commands import start_command, help_command
+from handlers.lessons import upload_lesson  # если есть
+from telegram.ext import filters
 from dotenv import load_dotenv
 import os
+import logging
 
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
-)
-
-# Загрузка токенов из .env
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Настройка логирования
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# Импорт хендлеров
-from handlers.menu import start, subject_choice
-from handlers.lessons import upload_lesson
-from handlers.messages import start_lesson, handle_lesson_message
-
-# Запуск бота
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
 
-    # Команды
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("upload_lesson", upload_lesson))
+    # 🔘 Команды
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("start_lesson", start_lesson))
-
+    app.add_handler(CommandHandler("upload_lesson", upload_lesson))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_lesson_message))
     app.add_handler(MessageHandler(filters.Document.PDF | filters.Document.DOCX, upload_lesson))
 
-    # Выбор предмета / уровня
-    app.add_handler(CallbackQueryHandler(subject_choice, pattern="^subject_"))
+    # 📋 Установка меню команд
+    app.bot.set_my_commands([
+        BotCommand("start", "Начать работу с ботом"),
+        BotCommand("help", "Помощь и описание команд"),
+        BotCommand("upload_lesson", "Загрузить урок"),
+        BotCommand("start_lesson", "Начать изучение урока"),
+    ])
 
-    # Сообщения от пользователя
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_lesson_message))
-
-    logging.info("✅ Бот запущен")
+    print("Бот запущен")
     app.run_polling()
 
 if __name__ == "__main__":
